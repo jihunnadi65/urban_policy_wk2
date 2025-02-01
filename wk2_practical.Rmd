@@ -1,6 +1,19 @@
 GEOG0149 - Urban Policy Practical (Week 2)
 
+Today's Research Question
+Who is most likely to move home and is population and mobility declining in the UK?
+
+Several influential studies by authors such as Cooke (2011), Bell et al. (2015) and Champion et al (2018) have indicated that rates of internal migration (long-distance moves) and possibly residential mobility (shorter distance changes of usual address) are declining in some Global North societies, most notably the US. This is not purely an intellectually interesting phenomenon as declining mobility could have major consequences for housing and labour markets.
+
+Most of our knowledge of UK mobility patterns comes from analyses of census data or the NHS Central Register (see studies by Champion and Shuttleworth, some referenced in lectures). Both of these resources have deficiencies – the census is comprehensive but is conducted only every ten years, whereas the NHSCR is updated continuously but has less complete coverage (some groups such as young men and immigrants are prone to not register with a GP and so are not correctly positioned in the data). The Office for National Statistics, meanwhile, produce Mid-Year Population Estimates (MYPEs) as well as other estimates that can be used to study local changes in populations and sometimes how these relate to migration.
+
+Today your task is to use two sweeps of the Labour Force Survey (1999 and 2019 – download as pre-cleaned .csv files from Moodle) to explore (i) the socio-demographic correlates of moving and (ii) whether mobility has declined in the UK between these two time points. I recently published an analysis very similar to this focusing particularly on mobility trends among younger adults. The LFS is a large UK labour market and social survey with many thousand respondents which is run quarterly by the Office for National Statistics and other UK statistical agencies.  Data were obtained from the UK Data Service (www.ukdataservice.ac.uk) and full LFS documentation can be obtained from that site.
+
+The advantage of using survey data for today’s task is that we know a lot of information about the people who participate and so can build up a very detailed picture of the socio-demographic predictors of moving behaviour. One drawback is that the people who respond to surveys may be selective and potentially not representative of the general population. We will therefore explore how to use weights to adjust results to avoid the bias that could result from assuming the LFS sample is randomly selected and representative of the UK population.
+
+
 ```{r}
+# import necessary libraries
 library(here)
 library(tidyverse)
 library(ggplot2)
@@ -8,13 +21,14 @@ library(descr)
 ```
 
 ```{r}
+# read the csv file containing the 1999 Labour Force Survey (LFS) data
 LFS99 <- read_csv(here::here("LFS99.csv"))
 ```
 
 ```{r}
-# inspect
+# inspect - most columns are in their raw form but the tenure and region columns have been pre-cleaned
 LFS99 %>% 
-  head(., n = 20)
+  head(., n = 10)
 ```
 
 ```{r}
@@ -30,9 +44,16 @@ LFS99 %>%
   unique()
 ```
 
+```{r}
+# tabulate the raw 'restme' variable
+table(LFS99$restme)
+```
 
 ```{r}
-# prepare the dependent variable
+# prepare the dummy mobility indicator dependent variable from the restme variable
+# distinguishes (i) people who moved in the last 12 months from (ii) everyone else who has not moved in the last 12 months
+# people with 'no answer' or 'does not apply' can be discarded from the sample
+# the final line assigns all other codes that are left on restme to the category "Has not moved"
 LFS99 <- mutate(LFS99,
                 moved = case_when(restme == "less than 12 months" ~ "Moved",
                                   restme %in% c("no answer", "does not apply") ~ "Missing",
@@ -40,74 +61,86 @@ LFS99 <- mutate(LFS99,
 ```
 
 ```{r}
-# inspect
-LFS99 %>% 
-  head(20)
-```
-
-```{r}
-# inspect mapping between the columns "restme" and "moved"
+# check the results by cross-tabulating restme with moved
 table(LFS99$restme, LFS99$moved, useNA = "ifany")
 ```
 
 ```{r}
-# filter out "does not apply" values os that we only have "Moved" and "Has not moved" in our moved column
+# filter out missing values so that we only have either "Moved" or "Has not moved" in our moved column
+# this can be used as the dependent variable for our analysis
 LFS99_moved <- LFS99 %>% 
   dplyr::filter(LFS99$moved != "Missing")
 ```
 
 ```{r}
+# check that missing values have been filtered out
 LFS99_moved %>% 
   pull(moved) %>% 
   unique()
 ```
 
 ```{r}
+# check out only those who have moved in the last 12 months
+# 15,184 people have changed their address in the last 12 months back in 1999
 LFS99_moved %>% 
   filter(LFS99_moved$moved == "Moved")
 ```
 
-Calculating a Weighted Mobility Rate
+Calculating the Mobility Rate
+
+Each respondent to the LFS is assigned a frequency weight in the ‘weight’ variable that is derived using official population estimates. A frequency weight is an integer indicating how many individuals in the population that particular respondent represents. For example, a respondent with a weight of 100 represents 100 people in the population, whereas a respondent weighted as 250 represents 250 people.
+
+Survey analysts use frequency weights to (1) gross up their results to show patterns across the entire population and (2) adjust estimates to take into account how the survey was designed (for example often small population subgroups are oversampled) as well as the non-response bias that can occur when certain types of people are disproportionately likely not to be found or are less likely to participate (e.g. young adults, non-English speakers, full-time workers, those living in flats and in urban areas tend to be harder to find and/or more reluctant to participate).
 
 ```{r}
-# switch off the optional ugly results plot by specifying the 'plot = F' parameter
+# we can calculate an adjusted mobility rate using the freq() function that calculates a weighted frequency table
+# first specify the variable you want to tabulate followed by the argument 'w = weight99'
+# switch off the optional results plot by specifying the 'plot = F' parameter
 freq(LFS99_moved$moved, w = LFS99_moved$weight99, plot = F)
+# 10.95% of weighted respondents or 6,337,126 weighted people have moved homes in 1999
+# weighted population total is 57.9 million
+# the ONS estimates that there were 58.7 million peope living in the UK around 1999. It's not possible to definitely explain that small discrepancy between the two counts but it is probably due to (1) sampling variation (2) us having discarded 'missing' responses and (3) the fact that LFS sample design does not encompass people living in some communal establishments (e.g. some types of care settings, hostels and defence facilities). In the 2001 census about 1.5% of the adult population were living in such types of communal residence so our weighted total seems plausible
 ```
 
 ```{r}
-# calculate the raw unweighted mobility rate and compare this to the weighted rate
+# calculate the raw un-weighted mobility rate and compare this to the weighted rate
 freq(LFS99_moved$moved, plot = F)
-# Why might the unweighted mobility rate be biased downwards?
-# the characteristics that predict survey non-response might also predict residential mobility.
-# the LFS might oversample groups which tend to be relatively immobile.
+# the un-weighted LFS mobility rate is lower than the weighted rate
+# Why might the un-weighted mobility rate be biased downwards?
+# 1. the characteristics that predict survey non-response might also predict residential mobility
+# 2. the LFS might over-sample groups which tend to be relatively immobile - this is a possibility
 ```
 
+Creating an age-mobility profile
+
 ```{r}
+# generate a new categorical age variable that divides 'age' into 5 year bands
+# use the cut() function and within it call the seq() function to divide the age values into 5-year blocks
 LFS99_moved <- mutate(LFS99_moved,
                       age_band = cut(age, breaks = seq(-1, 100, 5),
                                      labels = c("0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39", "40-44", "45-49", "50-54", "55-59", "60-64", "65-69",  "70-74", "75-79", "80-84", "85-89", "90-94", "95+")))
 ```
 
 ```{r}
-# inspect
+# a new categorical age variable has been created
 LFS99_moved %>% 
   head(20)
 ```
 
 ```{r}
-# ue the crosstab() function with the 'weight' and 'prop.r = T" options specified to calculate weighted mobility rates
+# use the crosstab() function with the 'weight' and 'prop.r = T" options specified to calculate weighted mobility rates
 crosstab(LFS99_moved$age_band, LFS99_moved$moved, weight=LFS99_moved$weight99, prop.r = T, plot = F)
-# the value for the 0-4 group is very high but this is because <1 year-old have been coded as resident for <12 months which is not helpful
-# hence, create a new dataest that drops all kids under 15 from the sample as we are predominantly interested in adults
+# the value for the 0-4 group is very high but this is because <1 year-old have been coded as resident for <12 months which is not helpful for us
 ```
 ```{r}
-LFS99_adults <- LFS99_moved %>% 
+# hence, create a new data set that drops all kids under 15 from the sample as we are predominantly interested in adults
+LFS99_moved_adults <- LFS99_moved %>% 
   dplyr::filter(!LFS99_moved$age < 15)
 ```
 
 ```{r}
-# compute mobility rates for age bands using crostab and row proportions
-tabplot <- crosstab(LFS99_adults$age_band, LFS99_adults$moved, w = LFS99_adults$weight99, prop.r = T, plot = F)
+# compute mobility rates for age bands using crosstab and row proportions
+tabplot <- crosstab(LFS99_moved_adults$age_band, LFS99_moved_adults$moved, w = LFS99_moved_adults$weight99, prop.r = T, plot = F)
 
 # inspect
 tabplot
@@ -116,47 +149,72 @@ tabplot
 ```{r}
 # export rates as % to a dataframe
 tabplot_agemob <- as.data.frame(tabplot$prop.row * 100)
+
+tabplot_agemob
 ```
 
 ```{r}
 # keep only percent moved
 tabplot_agemob <- tabplot_agemob %>% 
-  filter(LFS99_adults.moved == "Moved")
+  filter(LFS99_moved_adults.moved == "Moved")
+
+# inspect
+tabplot_agemob
 ```
 
 ```{r}
 # graph the results
-ggplot(data = tabplot_agemob, aes(x = LFS99_adults.age_band, y = Freq)) +
+ggplot(data = tabplot_agemob, aes(x = LFS99_moved_adults.age_band, y = Freq)) +
          geom_bar(stat = "identity", fill = "darkblue") +
+  ggtitle("Percentage of People Who Moved by Age Group (1999)") +
   xlab("Age") +
   ylab("Percent moved in last 12 months") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
   theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  geom_text(aes(label = round(Freq, 1), vjust = - 0.5))
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"), axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = paste(round(Freq, 1), "%", sep = ""), vjust = - 0.4), size = 3.5)
 ```
 
 Residential Mobility by Number of Children in the 1999 LFS Data
 
+On your own, examine how rates of residential mobility vary by number of children in the 1999 LFS data. To do this you will first need to generate a new 'number of kids' variable with sensible category codes (how you do that is up to you). Once you have this variable sorted you then need to crosstabulate it with moving (as we did for age in the practical) and store your estimates in a data frame.
+
+Finally, draw and include a figure showing your results plus a few lines by way of interpretation as the Key Output from today’s practical exercise. You can use any type of figure you like so think carefully about what type might be most suited to these results (bars, dots etc could all work).
+
+This Key Output needs to be compiled into a technical appendix document along with the Key Outputs you will be asked to produce from each of the rest of the course practicals. You do not need to submit your code but you do need to submit your compiled Key Outputs as a technical appendix on Moodle.
+
 ```{r}
+# inspect the unique value for the variable fdpch16
 LFS99_moved %>% 
   pull(fdpch16) %>% 
   unique()
 ```
 
 ```{r}
+# filter only for adult households, as we are only interested in the 'number of kids' an adult household has
+# in the UK, one has the right to leave home without one's parent's or carer's permission from the age of 16. Hence, we use 16 as the threshold here.
 LFS99_adult_household <- LFS99_moved %>% 
-  filter(LFS99_moved$age >= 18)
+  filter(LFS99_moved$age >= 16)
 ```
 
 ```{r}
+# create a new column number_of_children and filter out NA values resulting from "does not apply"
 LFS99_adult_household <- mutate(LFS99_adult_household,
                       number_of_children = as.numeric(fdpch16)) %>% 
     filter(!is.na(number_of_children))
+
+# inspect unique values in the new column
+LFS99_adult_household %>% 
+  pull(number_of_children) %>% 
+  unique()
 ```
 
 ```{r}
-# compute mobility rates for number of children using crostab and row proportions
+# compute mobility rates for number of children using crosstab and row proportions
 tabplot2 <- crosstab(LFS99_adult_household$number_of_children, LFS99_adult_household$moved, w = LFS99_adult_household$weight99, prop.r = T, plot = F)
+
+# inspect
+tabplot2
 ```
 
 ```{r}
@@ -164,8 +222,7 @@ tabplot2 <- crosstab(LFS99_adult_household$number_of_children, LFS99_adult_house
 tabplot2_childmob <- as.data.frame(tabplot2$prop.row * 100)
 
 # inspect
-tabplot2_childmob %>% 
-  head(20)
+tabplot2_childmob
 ```
 
 ```{r}
@@ -174,23 +231,18 @@ tabplot2_childmob <- tabplot2_childmob %>%
   filter(LFS99_adult_household.moved == "Moved")
 
 # inspect
-tabplot2_childmob %>% 
-  head(20)
+tabplot2_childmob
 ```
 
 ```{r}
 # graph the results
 ggplot(data = tabplot2_childmob, aes(x = LFS99_adult_household.number_of_children, y = Freq)) +
-         geom_bar(stat = "identity", fill = "darkblue") +
+         geom_bar(stat = "identity", fill = "darkblue", width = 0.85) +
+  ggtitle("Percentage of People Who Moved by Number of Children (1999)") +
   xlab("Number of Children") +
   ylab("Percent moved in last 12 months") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
   theme_classic() +
-  theme(axis.text.x = element_text(angle = 0), axis.text.y = ) +
-  geom_text(aes(label = paste(round(Freq, 1), "%"), vjust = - 0.5))
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  geom_text(aes(label = paste(round(Freq, 1), "%", sep = ""), vjust = - 0.5), size = 3.5)
 ```
-
-```{r}
-LFS99_adult_household %>% 
-  filter(number_of_children == 6)
-```
-
