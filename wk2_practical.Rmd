@@ -1,0 +1,196 @@
+GEOG0149 - Urban Policy Practical (Week 2)
+
+```{r}
+library(here)
+library(tidyverse)
+library(ggplot2)
+library(descr)
+```
+
+```{r}
+LFS99 <- read_csv(here::here("LFS99.csv"))
+```
+
+```{r}
+# inspect
+LFS99 %>% 
+  head(., n = 20)
+```
+
+```{r}
+# inspect column names
+LFS99 %>%
+  colnames()
+```
+
+```{r}
+# inspect unique values in restme column
+LFS99 %>% 
+  pull(restme) %>% 
+  unique()
+```
+
+
+```{r}
+# prepare the dependent variable
+LFS99 <- mutate(LFS99,
+                moved = case_when(restme == "less than 12 months" ~ "Moved",
+                                  restme %in% c("no answer", "does not apply") ~ "Missing",
+                                  TRUE ~"Has not moved"))
+```
+
+```{r}
+# inspect
+LFS99 %>% 
+  head(20)
+```
+
+```{r}
+# inspect mapping between the columns "restme" and "moved"
+table(LFS99$restme, LFS99$moved, useNA = "ifany")
+```
+
+```{r}
+# filter out "does not apply" values os that we only have "Moved" and "Has not moved" in our moved column
+LFS99_moved <- LFS99 %>% 
+  dplyr::filter(LFS99$moved != "Missing")
+```
+
+```{r}
+LFS99_moved %>% 
+  pull(moved) %>% 
+  unique()
+```
+
+```{r}
+LFS99_moved %>% 
+  filter(LFS99_moved$moved == "Moved")
+```
+
+Calculating a Weighted Mobility Rate
+
+```{r}
+# switch off the optional ugly results plot by specifying the 'plot = F' parameter
+freq(LFS99_moved$moved, w = LFS99_moved$weight99, plot = F)
+```
+
+```{r}
+# calculate the raw unweighted mobility rate and compare this to the weighted rate
+freq(LFS99_moved$moved, plot = F)
+# Why might the unweighted mobility rate be biased downwards?
+# the characteristics that predict survey non-response might also predict residential mobility.
+# the LFS might oversample groups which tend to be relatively immobile.
+```
+
+```{r}
+LFS99_moved <- mutate(LFS99_moved,
+                      age_band = cut(age, breaks = seq(-1, 100, 5),
+                                     labels = c("0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39", "40-44", "45-49", "50-54", "55-59", "60-64", "65-69",  "70-74", "75-79", "80-84", "85-89", "90-94", "95+")))
+```
+
+```{r}
+# inspect
+LFS99_moved %>% 
+  head(20)
+```
+
+```{r}
+# ue the crosstab() function with the 'weight' and 'prop.r = T" options specified to calculate weighted mobility rates
+crosstab(LFS99_moved$age_band, LFS99_moved$moved, weight=LFS99_moved$weight99, prop.r = T, plot = F)
+# the value for the 0-4 group is very high but this is because <1 year-old have been coded as resident for <12 months which is not helpful
+# hence, create a new dataest that drops all kids under 15 from the sample as we are predominantly interested in adults
+```
+```{r}
+LFS99_adults <- LFS99_moved %>% 
+  dplyr::filter(!LFS99_moved$age < 15)
+```
+
+```{r}
+# compute mobility rates for age bands using crostab and row proportions
+tabplot <- crosstab(LFS99_adults$age_band, LFS99_adults$moved, w = LFS99_adults$weight99, prop.r = T, plot = F)
+
+# inspect
+tabplot
+```
+
+```{r}
+# export rates as % to a dataframe
+tabplot_agemob <- as.data.frame(tabplot$prop.row * 100)
+```
+
+```{r}
+# keep only percent moved
+tabplot_agemob <- tabplot_agemob %>% 
+  filter(LFS99_adults.moved == "Moved")
+```
+
+```{r}
+# graph the results
+ggplot(data = tabplot_agemob, aes(x = LFS99_adults.age_band, y = Freq)) +
+         geom_bar(stat = "identity", fill = "darkblue") +
+  xlab("Age") +
+  ylab("Percent moved in last 12 months") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = round(Freq, 1), vjust = - 0.5))
+```
+
+Residential Mobility by Number of Children in the 1999 LFS Data
+
+```{r}
+LFS99_moved %>% 
+  pull(fdpch16) %>% 
+  unique()
+```
+
+```{r}
+LFS99_adult_household <- LFS99_moved %>% 
+  filter(LFS99_moved$age >= 18)
+```
+
+```{r}
+LFS99_adult_household <- mutate(LFS99_adult_household,
+                      number_of_children = as.numeric(fdpch16)) %>% 
+    filter(!is.na(number_of_children))
+```
+
+```{r}
+# compute mobility rates for number of children using crostab and row proportions
+tabplot2 <- crosstab(LFS99_adult_household$number_of_children, LFS99_adult_household$moved, w = LFS99_adult_household$weight99, prop.r = T, plot = F)
+```
+
+```{r}
+# export rates as % to a dataframe
+tabplot2_childmob <- as.data.frame(tabplot2$prop.row * 100)
+
+# inspect
+tabplot2_childmob %>% 
+  head(20)
+```
+
+```{r}
+# keep only percent moved
+tabplot2_childmob <- tabplot2_childmob %>% 
+  filter(LFS99_adult_household.moved == "Moved")
+
+# inspect
+tabplot2_childmob %>% 
+  head(20)
+```
+
+```{r}
+# graph the results
+ggplot(data = tabplot2_childmob, aes(x = LFS99_adult_household.number_of_children, y = Freq)) +
+         geom_bar(stat = "identity", fill = "darkblue") +
+  xlab("Number of Children") +
+  ylab("Percent moved in last 12 months") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 0), axis.text.y = ) +
+  geom_text(aes(label = paste(round(Freq, 1), "%"), vjust = - 0.5))
+```
+
+```{r}
+LFS99_adult_household %>% 
+  filter(number_of_children == 6)
+```
+
